@@ -1,22 +1,16 @@
 #include <stdio.h>
-#include <string.h>
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 #include "example_http_client_util.h"
-#include "lwip/netif.h"
-#include "lwip/ip_addr.h"
 
-// --- Configurações da rede e ThingSpeak ---
-#define THINGSPEAK_API_KEY  "5Y283PJ0JHGWHVTS"
-#define HOST                "api.thingspeak.com"
-#define PORT                80
-#define INTERVALO_MS        500
-
-// --- Pinos ---
-#define BUTTON_A            5
-#define LED_RED             13
+// Configurações
+#define HOST        "192.168.18.8"
+#define PORT        5000
+#define INTERVALO_MS 500
+#define BUTTON_A    5
+#define LED_RED     13
 
 // Inicializa o ADC e habilita o sensor interno
 void adc_setup() {
@@ -28,13 +22,14 @@ void adc_setup() {
 float read_temperature() {
     adc_select_input(4);
     uint16_t raw = adc_read();
-    float voltage = raw * 3.3f / (1 << 12);
+    float voltage = raw * 3.3f / (1 << 12);  // 12 bits
+    // Fórmula para Pico:
     return 27.0f - (voltage - 0.706f) / 0.001721f;
 }
 
 // Média de N amostras
-double read_temperature_average(int samples) {
-    double sum = 0.0;
+float read_temperature_average(int samples) {
+    float sum = 0.0f;
     for (int i = 0; i < samples; i++) {
         sum += read_temperature();
         sleep_ms(50);
@@ -54,11 +49,47 @@ int main() {
     gpio_init(LED_RED);
     gpio_set_dir(LED_RED, GPIO_OUT);
 
-    // Inicializa Wi-Fi
-    if (cyw43_arch_init()) {
-        printf("Falha ao inicializar o Wi-Fi\n");
-        return 1;
+    // Wi-Fi
+    if (cyw43_arch_init()) return 1;
+    cyw43_arch_enable_sta_mode();
+    cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD,
+                                       CYW43_AUTH_WPA2_AES_PSK, 30000);
+
+    printf("Cliente HTTP iniciado — IP: %s\n",
+           ip4addr_ntoa(netif_ip4_addr(netif_list)));
+
+    int last_button = 1;
+
+    while (1) {
+        int btn = gpio_get(BUTTON_A);
+        float temp = read_temperature_average(5);
+        char path[128];
+
+        // Define caminho incluindo status e temperatura
+        snprintf(path, sizeof(path),
+                 "/update?btn=%d&temp=%.2f", btn, temp);
+
+        // LED reflete o botão
+        gpio_put(LED_RED, btn == 0);
+
+        // Configura e envia requisição
+        EXAMPLE_HTTP_REQUEST_T req = {
+            .hostname   = HOST,
+            .url        = path,
+            .port       = PORT,
+            .headers_fn = http_client_header_print_fn,
+            .recv_fn    = http_client_receive_print_fn
+        };
+
+        printf("GET %s\n", path);
+        int res = http_client_request_sync(cyw43_arch_async_context(), &req);
+        printf(res == 0 ? "Sucesso\n" : "Erro %d\n", res);
+
+        sleep_ms(INTERVALO_MS);
     }
+
+    return 0;
+}
     cyw43_arch_enable_sta_mode();
     if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD,
                                            CYW43_AUTH_WPA2_AES_PSK, 30000)) {

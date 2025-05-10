@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Status Botão e Temperatura</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding-top: 50px;
+    }
+    h1 {
+      margin-bottom: 40px;
+    }
+    .box {
+      width: 200px;
+      height: 100px;
+      color: white;
+      font-size: 1.5em;
+      font-weight: bold;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 20px auto;
+      border-radius: 12px;
+      transition: background-color 0.3s ease;
+    }
+    #status-box {
+      background-color: red;
+    }
+    #temp-box {
+      background-color: blue;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Status do botão e temperatura</h1>
+
+  <div id="status-box" class="box">OFF</div>
+  <div id="temp-box"   class="box">-- °C</div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+
+    const statusBox = document.getElementById('status-box');
+    const tempBox   = document.getElementById('temp-box');
+
+    socket.on('connect', () => {
+      console.log('Conectado ao servidor via Socket.IO');
+    });
+
+    // Evento que recebe ambos: estado do botão e temperatura
+    socket.on('status', data => {
+      const btn  = data.btn;    // 0 = pressionado, 1 = solto
+      const temp = data.temp;   // string formatada
+
+      // Atualiza o box do botão
+      if (btn === 0) {
+        statusBox.style.backgroundColor = 'green';
+        statusBox.textContent = 'ON';
+      } else {
+        statusBox.style.backgroundColor = 'red';
+        statusBox.textContent = 'OFF';
+      }
+
+      // Atualiza o box da temperatura
+      tempBox.textContent = temp + ' °C';
+    });
+
+    // (Opcional) manter o listener antigo de 'command'
+    socket.on('command', data => {
+      console.log('Comando recebido:', data.action);
+    });
+  </script>
+
+</body>
+</html>
